@@ -1,0 +1,40 @@
+import { NextResponse } from 'next/server';
+import { signToken } from '@/lib/auth';
+import { cookies } from 'next/headers';
+
+export async function POST(request: Request) {
+  try {
+    const { id, password } = await request.json();
+
+    if (id === '1234567890' && password === '1234567890') {
+      const token = await signToken(id);
+      
+      const response = NextResponse.json(
+        { success: true, message: 'Logged in successfully' },
+        { status: 200 }
+      );
+
+      // Set auth_token cookie
+      const cookieStore = await cookies();
+      cookieStore.set('auth_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24, // 1 day
+        path: '/',
+      });
+
+      return response;
+    }
+
+    return NextResponse.json(
+      { success: false, message: 'Invalid ID or password' },
+      { status: 401 }
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, message: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
