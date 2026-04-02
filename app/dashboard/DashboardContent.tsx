@@ -6,6 +6,21 @@ import { Violation } from '@/types/violation';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+/**
+ * Converts whatever the DB returns for an image column into a valid
+ * src string for <img>:
+ *  - already a full data-URI   → returned as-is
+ *  - raw base64 starting with  iVBOR… → PNG  (PNG magic bytes in base64)
+ *  - everything else           → JPEG
+ */
+function toImageSrc(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (s.startsWith('data:')) return s;          // already a data-URI
+  const mime = s.startsWith('iVBOR') ? 'image/png' : 'image/jpeg';
+  return `data:${mime};base64,${s}`;
+}
+
 const TRANSLATIONS: Record<string, any> = {
   en: {
     title: 'Traffic Control System',
@@ -282,7 +297,6 @@ export default function DashboardContent({
 
   const [declineTarget, setDeclineTarget] = useState<string | null>(null);
   const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
-  const [modalImages, setModalImages] = useState<{ complete_image: string | null; plate_image: string | null } | null>(null);
   const [loadingImages, setLoadingImages] = useState(false);
   const [selectedReason, setSelectedReason] = useState('');
   const [updating, setUpdating] = useState(false);
@@ -301,19 +315,39 @@ export default function DashboardContent({
     localStorage.setItem('dash_lang', language);
   }, [language]);
 
-  // Fetch images when modal is opened
+  // If the list query already included images we can use them directly.
+  // Only fall back to the per-row API call if the field is missing.
+  const [extraImages, setExtraImages] = useState<{ complete_image: string | null; plate_image: string | null } | null>(null);
+
   useEffect(() => {
     if (!selectedViolation) {
-      setModalImages(null);
+      setExtraImages(null);
       return;
     }
+    // Images already embedded in the violation object — no extra fetch needed
+    if (selectedViolation.complete_image_b64 !== undefined) {
+      setExtraImages({
+        complete_image: selectedViolation.complete_image_b64 ?? null,
+        plate_image: selectedViolation.plate_image_b64 ?? null,
+      });
+      return;
+    }
+    // Fallback: fetch from dedicated endpoint
     setLoadingImages(true);
-    setModalImages(null);
+    setExtraImages(null);
     axios.get(`/api/violations/${selectedViolation.id}`)
-      .then(res => setModalImages(res.data.data))
-      .catch(() => setModalImages({ complete_image: null, plate_image: null }))
+      .then(res => {
+        const d = res.data.data;
+        setExtraImages({
+          complete_image: d?.complete_image_b64 ?? null,
+          plate_image: d?.plate_image_b64 ?? null,
+        });
+      })
+      .catch(() => setExtraImages({ complete_image: null, plate_image: null }))
       .finally(() => setLoadingImages(false));
   }, [selectedViolation?.id]);
+
+  const modalImages = extraImages;
 
   // Fetch data on page change
   useEffect(() => {
@@ -528,6 +562,7 @@ export default function DashboardContent({
                 <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest">{t.table.location}</th>
                 <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest">{t.table.violationType}</th>
                 <th className='px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest'>{language == 'en' ? 'Track ID' : 'ट्रैक आईडी'}</th>
+                <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest">{t.table.evidence}</th>
                 <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest text-right">{t.table.action}</th>
               </tr>
             </thead>
@@ -568,6 +603,45 @@ export default function DashboardContent({
                   </td>
 
                   <td className="px-6 py-5 text-[11px] text-slate-500 font-medium uppercase tracking-tight">{v.track_id}</td>
+
+                  {/* Inline evidence images – natural dimensions */}
+                  <td className="px-3 py-3">
+                    <div className="flex flex-col gap-2">
+
+                      {/* Full scene */}
+                      {toImageSrc(v.complete_image_b64) ? (
+                        <div className="group/thumb relative overflow-hidden border border-blue-100 bg-slate-100 inline-block">
+                          <img
+                            src={toImageSrc(v.complete_image_b64)!}
+                            alt="Full scene"
+                            style={{ maxWidth: '200px', height: 'auto', display: 'block' }}
+                            className="transition-transform duration-300 group-hover/thumb:scale-105"
+                          />
+                          <span className="absolute bottom-0 left-0 right-0 text-[8px] font-bold uppercase tracking-widest text-white bg-blue-600/70 px-1.5 py-0.5 text-center">
+                            {language === 'en' ? 'Scene' : 'दृश्य'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
+                      )}
+
+                      {/* Plate crop */}
+                      {toImageSrc(v.plate_image_b64) ? (
+                        <div className="group/plate relative overflow-hidden border border-blue-100 bg-slate-100 inline-block">
+                          <img
+                            src={toImageSrc(v.plate_image_b64)!}
+                            alt="Plate"
+                            style={{ maxWidth: '200px', height: 'auto', display: 'block' }}
+                            className="transition-transform duration-300 group-hover/plate:scale-105"
+                          />
+                          <span className="absolute bottom-0 left-0 right-0 text-[8px] font-bold uppercase tracking-widest text-white bg-slate-600/70 px-1.5 py-0.5 text-center">
+                            {language === 'en' ? 'Plate' : 'प्लेट'}
+                          </span>
+                        </div>
+                      ) : null}
+
+                    </div>
+                  </td>
 
                   <td className="px-6 py-5 text-right">
                     <StatusBadge
@@ -682,35 +756,37 @@ export default function DashboardContent({
                 <div className="space-y-8">
                   <div className="space-y-3">
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.modal.images.complete}</h4>
-                    <div className="aspect-video bg-slate-100 border border-blue-50 relative overflow-hidden group">
-                      {loadingImages ? (
-                        <div className="absolute inset-0 bg-linear-to-r from-slate-100 via-slate-50 to-slate-100 animate-pulse" />
-                      ) : modalImages?.complete_image ? (
+                    {loadingImages ? (
+                      <div className="w-full h-32 bg-slate-100 border border-blue-50 animate-pulse" />
+                    ) : toImageSrc(modalImages?.complete_image) ? (
+                      <div className="border border-blue-50 overflow-hidden group">
                         <img
-                          src={`data:image/jpeg;base64,${modalImages.complete_image}`}
+                          src={toImageSrc(modalImages!.complete_image)!}
                           alt="Violation Scene"
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          style={{ width: '100%', height: 'auto', display: 'block' }}
+                          className="transition-transform duration-500 group-hover:scale-105"
                         />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-slate-400 uppercase tracking-widest">No Image</div>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="w-full py-8 flex items-center justify-center bg-slate-50 border border-blue-50 text-[10px] text-slate-400 uppercase tracking-widest">No Image</div>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.modal.images.plate}</h4>
-                    <div className="h-48 bg-slate-100 border border-blue-50 relative overflow-hidden group">
-                      {loadingImages ? (
-                        <div className="absolute inset-0 bg-linear-to-r from-slate-100 via-slate-50 to-slate-100 animate-pulse" />
-                      ) : modalImages?.plate_image ? (
+                    {loadingImages ? (
+                      <div className="w-full h-16 bg-slate-100 border border-blue-50 animate-pulse" />
+                    ) : toImageSrc(modalImages?.plate_image) ? (
+                      <div className="border border-blue-50 overflow-hidden group">
                         <img
-                          src={`data:image/jpeg;base64,${modalImages.plate_image}`}
+                          src={toImageSrc(modalImages!.plate_image)!}
                           alt="Plate Detail"
-                          className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110"
+                          style={{ width: '100%', height: 'auto', display: 'block' }}
+                          className="transition-transform duration-500 group-hover:scale-110"
                         />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-slate-400 uppercase tracking-widest">No Image</div>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="w-full py-6 flex items-center justify-center bg-slate-50 border border-blue-50 text-[10px] text-slate-400 uppercase tracking-widest">No Image</div>
+                    )}
                   </div>
                 </div>
 

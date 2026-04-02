@@ -14,7 +14,7 @@ export async function GET(
     const { id } = await params;
     const { data, error } = await supabase
       .from('helmet_violations')
-      .select('complete_image, plate_image')
+      .select('complete_image_b64, plate_image_b64')
       .eq('id', id)
       .single();
 

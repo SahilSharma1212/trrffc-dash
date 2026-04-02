@@ -6,9 +6,9 @@ export interface Violation {
   location: string;
   helmet_status: string;
   complete_status: string;
-  complete_image: string;
+  complete_image_b64: string | null;
   date_folder: string;
-  plate_image: string;
+  plate_image_b64: string | null;
   status: string;
   reason: string | null;
   created_at: string;

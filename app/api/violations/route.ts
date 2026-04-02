@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
+    const limit = parseInt(searchParams.get('limit') || '50');
     const filterType = searchParams.get('filterType') || 'vehicle_number';
     const filterValue = searchParams.get('filterValue') || '';
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('helmet_violations')
       .select(
-        'id, track_id, vehicle_number, detected_at, location, helmet_status, date_folder, status, reason, created_at',
+        'id, track_id, vehicle_number, detected_at, location, helmet_status, date_folder, status, reason, created_at, complete_image_b64, plate_image_b64',
         { count: 'exact' }
       );
 
