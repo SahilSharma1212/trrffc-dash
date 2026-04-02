@@ -300,7 +300,8 @@ export default function DashboardContent({
   const [loadingImages, setLoadingImages] = useState(false);
   const [selectedReason, setSelectedReason] = useState('');
   const [updating, setUpdating] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const isInitialMount = useRef(true);
   const router = useRouter();
 
   const t = TRANSLATIONS[language];
@@ -351,17 +352,21 @@ export default function DashboardContent({
 
   // Fetch data on page change
   useEffect(() => {
-    fetchViolations();
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    fetchViolations(true);
   }, [page]);
 
   // Periodic Refresh
   useEffect(() => {
-    const interval = setInterval(fetchViolations, 30000);
+    const interval = setInterval(() => fetchViolations(false), 30000);
     return () => clearInterval(interval);
-  }, [page, filterType, filterValue]);
+  }, [page, filterType, filterValue, initialLimit]);
 
   async function fetchViolations(showLoading = false) {
-    if (showLoading) setIsSearching(true);
+    if (showLoading) setIsLoadingData(true);
     try {
       const response = await axios.get('/api/violations', {
         params: { page, limit: initialLimit, filterType, filterValue }
@@ -376,7 +381,7 @@ export default function DashboardContent({
         router.push('/signin');
       }
     } finally {
-      if (showLoading) setIsSearching(false);
+      if (showLoading) setIsLoadingData(false);
     }
   }
 
@@ -516,14 +521,17 @@ export default function DashboardContent({
 
             {/* Search Button */}
             <button
-              disabled={isSearching}
+              disabled={isLoadingData}
               onClick={() => {
-                setPage(1);
-                fetchViolations(true);
+                if (page === 1) {
+                  fetchViolations(true);
+                } else {
+                  setPage(1); // will trigger the page useEffect
+                }
               }}
               className="w-full md:w-auto px-8 py-2.5 bg-blue-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95 disabled:bg-blue-400 disabled:cursor-not-allowed"
             >
-              {isSearching ? (language === 'en' ? 'Searching...' : 'खोज रहे हैं...') : t.search.button}
+              {isLoadingData ? (language === 'en' ? 'Searching...' : 'खोज रहे हैं...') : t.search.button}
             </button>
           </div>
         </div>
@@ -553,7 +561,15 @@ export default function DashboardContent({
           </div>
         )}
         {/* TABLE */}
-        <div className="bg-white border border-blue-100 shadow-xl overflow-x-auto">
+        <div className="bg-white border border-blue-100 shadow-xl overflow-x-auto relative min-h-[300px]">
+          {isLoadingData && (
+            <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center pointer-events-none">
+              <div className="flex flex-col items-center gap-3 bg-white p-6 rounded-lg shadow-lg border border-blue-100">
+                <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">{language === 'en' ? 'Loading Records...' : 'रिकॉर्ड लोड हो रहे हैं...'}</span>
+              </div>
+            </div>
+          )}
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-blue-100">
@@ -656,7 +672,7 @@ export default function DashboardContent({
             </tbody>
           </table>
 
-          {violations.length === 0 && (
+          {!isLoadingData && violations.length === 0 && (
             <div className="py-20 text-center">
               <p className="text-xs text-slate-400 uppercase">{t.noRecords}</p>
             </div>

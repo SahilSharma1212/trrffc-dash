@@ -20,7 +20,7 @@ export default async function DashboardPage() {
     data: [] as Violation[], 
     count: 0, 
     page: 1, 
-    limit: 100,
+    limit: 40,
     stats: { pending: 0, accepted: 0, declined: 0 }
   };
   
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
     const cookieStore = await cookies();
     const cookie = cookieStore.get('auth_token')?.value;
 
-    const response = await axios.get(`${baseUrl}/api/violations?page=1&limit=100`, {
+    const response = await axios.get(`${baseUrl}/api/violations?page=1&limit=40`, {
       headers: {
         Cookie: `auth_token=${cookie}`
       }
