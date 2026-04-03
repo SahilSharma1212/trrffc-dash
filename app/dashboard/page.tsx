@@ -3,7 +3,7 @@ import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import DashboardContent from './DashboardContent';
 import { Violation } from '@/types/violation';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -28,7 +28,12 @@ export default async function DashboardPage() {
     const cookieStore = await cookies();
     const cookie = cookieStore.get('auth_token')?.value;
 
-    const response = await axios.get(`/api/violations?page=1&limit=40`, {
+    const headersList = await headers();
+    const host = headersList.get('host') || 'localhost:3000';
+    const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
+    const response = await axios.get(`${baseUrl}/api/violations?page=1&limit=40`, {
       headers: {
         Cookie: `auth_token=${cookie}`
       }

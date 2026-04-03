@@ -449,8 +449,9 @@ export default function DashboardContent({
           plate_image: d?.plate_image_b64 ?? null,
         });
       })
-      .catch(() => {
-        toast.error(language === 'en' ? 'Failed to load violation images' : 'छवियाँ लोड नहीं हो सकीं');
+      .catch((error: any) => {
+        const msg = error.response?.data?.error || error.response?.data?.message || (language === 'en' ? 'Failed to load violation images' : 'छवियाँ लोड नहीं हो सकीं');
+        toast.error(msg);
         setExtraImages({ complete_image: null, plate_image: null });
       })
       .finally(() => setLoadingImages(false));
@@ -477,11 +478,8 @@ export default function DashboardContent({
         if (error.response?.status === 401) {
           router.push('/signin');
         } else {
-          toast.error(
-            language === 'en'
-              ? 'Failed to fetch records. Please try again.'
-              : 'रिकॉर्ड प्राप्त करने में विफल। कृपया पुनः प्रयास करें।'
-          );
+          const msg = error.response?.data?.error || error.response?.data?.message || (language === 'en' ? 'Failed to fetch records. Please try again.' : 'रिकॉर्ड प्राप्त करने में विफल। कृपया पुनः प्रयास करें।');
+          toast.error(msg);
         }
       } finally {
         if (showLoading) setIsLoadingData(false);
@@ -548,10 +546,8 @@ export default function DashboardContent({
         toast.dismiss(toastId);
         router.push('/signin');
       } else {
-        toast.error(
-          language === 'en' ? 'Failed to update status. Please try again.' : 'स्थिति अपडेट विफल। पुनः प्रयास करें।',
-          { id: toastId }
-        );
+        const msg = error.response?.data?.error || error.response?.data?.message || (language === 'en' ? 'Failed to update status. Please try again.' : 'स्थिति अपडेट विफल। पुनः प्रयास करें।');
+        toast.error(msg, { id: toastId });
       }
     } finally {
       setUpdatingId(null);
@@ -569,8 +565,9 @@ export default function DashboardContent({
       await axios.post('/api/auth/logout');
       toast.success(language === 'en' ? 'Signed out' : 'साइन आउट हो गए', { id: toastId });
       router.replace('/signin');
-    } catch {
-      toast.error(language === 'en' ? 'Sign out failed' : 'साइन आउट विफल', { id: toastId });
+    } catch (error: any) {
+      const msg = error.response?.data?.error || error.response?.data?.message || (language === 'en' ? 'Sign out failed' : 'साइन आउट विफल');
+      toast.error(msg, { id: toastId });
     }
   };
 
