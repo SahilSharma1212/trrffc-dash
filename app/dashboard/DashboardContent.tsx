@@ -87,7 +87,7 @@ function LazyImage({
 function SkeletonRow() {
   return (
     <tr className="border-b border-blue-50/50">
-      {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+      {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <td key={i} className="px-6 py-5">
           <div
             className="h-3 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite] rounded-sm"
@@ -605,12 +605,6 @@ export default function DashboardContent({
           <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-4">
               <h1 className="text-sm font-bold text-white uppercase">{t.title}</h1>
-              <span className="w-px h-4 bg-blue-400" />
-              {/* Live indicator */}
-              <span className="flex items-center gap-1.5 text-[11px] text-blue-200 uppercase tracking-widest">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live
-              </span>
             </div>
 
             <div className="flex items-center gap-6">
@@ -707,6 +701,44 @@ export default function DashboardContent({
             </div>
           </div>
 
+
+          {totalPages > 1 && (
+            <div className="mt-4 bg-white border border-blue-100 px-6 py-4 flex items-center justify-between">
+              <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest">
+                {t.pagination.showing}{' '}
+                {((page - 1) * limit) + 1}–{Math.min(page * limit, totalCount)}{' '}
+                {t.pagination.of} {totalCount} {t.pagination.records}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={page === 1 || isLoadingData}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="px-4 py-2 border border-blue-100 text-[13px] font-bold uppercase tracking-widest bg-white hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                >
+                  {isLoadingData && page > 1 ? (
+                    <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                  ) : '←'}
+                  {t.pagination.previous}
+                </button>
+
+                <span className="px-4 py-2 text-[13px] font-bold text-blue-600 border border-blue-200 bg-blue-50">
+                  {page} / {totalPages}
+                </span>
+
+                <button
+                  disabled={page === totalPages || isLoadingData}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="px-4 py-2 border border-blue-100 text-[13px] font-bold uppercase tracking-widest bg-white hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                >
+                  {t.pagination.next}
+                  {isLoadingData && page < totalPages ? (
+                    <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                  ) : '→'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ---------------------------------------------------------------- */}
           {/* TABLE */}
           {/* ---------------------------------------------------------------- */}
@@ -721,7 +753,12 @@ export default function DashboardContent({
                   <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest">
                     {language === 'en' ? 'Track ID' : 'ट्रैक आईडी'}
                   </th>
-                  <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest">{t.table.evidence}</th>
+                  <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest">
+                    {language === 'en' ? 'Scene' : 'दृश्य'}
+                  </th>
+                  <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest">
+                    {language === 'en' ? 'Plate' : 'प्लेट'}
+                  </th>
                   <th className="px-6 py-5 text-[13px] font-bold text-slate-500 uppercase tracking-widest text-right">{t.table.action}</th>
                 </tr>
               </thead>
@@ -762,39 +799,36 @@ export default function DashboardContent({
 
                       <td className="px-6 py-4 text-[11px] text-slate-500 font-medium uppercase">{v.track_id}</td>
 
-                      {/* Evidence thumbnails – lazy loaded */}
+                      {/* Scene thumbnail */}
                       <td className="px-3 py-3">
-                        <div className="flex flex-col gap-2">
-                          {toImageSrc(v.complete_image_b64) ? (
-                            <div className="group/thumb relative overflow-hidden border border-blue-100 inline-block">
-                              <LazyImage
-                                src={toImageSrc(v.complete_image_b64)!}
-                                alt="Full scene"
-                                style={{ maxWidth: 200, height: 'auto' }}
-                                className="transition-transform duration-300 group-hover/thumb:scale-105"
-                              />
-                              <span className="absolute bottom-0 left-0 right-0 text-[8px] font-bold uppercase tracking-widest text-white bg-blue-600/70 px-1.5 py-0.5 text-center">
-                                {language === 'en' ? 'Scene' : 'दृश्य'}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
-                          )}
+                        {toImageSrc(v.complete_image_b64) ? (
+                          <div className="group/thumb relative overflow-hidden border border-blue-100 inline-block w-full max-w-[200px]">
+                            <LazyImage
+                              src={toImageSrc(v.complete_image_b64)!}
+                              alt="Full scene"
+                              style={{ width: '100%', height: 'auto' }}
+                              className="transition-transform duration-300 group-hover/thumb:scale-105"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
+                        )}
+                      </td>
 
-                          {toImageSrc(v.plate_image_b64) && (
-                            <div className="group/plate relative overflow-hidden border border-blue-100 inline-block">
-                              <LazyImage
-                                src={toImageSrc(v.plate_image_b64)!}
-                                alt="Plate"
-                                style={{ maxWidth: 200, height: 'auto' }}
-                                className="transition-transform duration-300 group-hover/plate:scale-105"
-                              />
-                              <span className="absolute bottom-0 left-0 right-0 text-[8px] font-bold uppercase tracking-widest text-white bg-slate-600/70 px-1.5 py-0.5 text-center">
-                                {language === 'en' ? 'Plate' : 'प्लेट'}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                      {/* Plate thumbnail */}
+                      <td className="px-3 py-3">
+                        {toImageSrc(v.plate_image_b64) ? (
+                          <div className="group/plate relative overflow-hidden border border-blue-100 inline-block w-full max-w-[200px]">
+                            <LazyImage
+                              src={toImageSrc(v.plate_image_b64)!}
+                              alt="Plate"
+                              style={{ width: '100%', height: 'auto' }}
+                              className="transition-transform duration-300 group-hover/plate:scale-105"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
+                        )}
                       </td>
 
                       <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
@@ -824,42 +858,7 @@ export default function DashboardContent({
           {/* ---------------------------------------------------------------- */}
           {/* PAGINATION */}
           {/* ---------------------------------------------------------------- */}
-          {totalPages > 1 && (
-            <div className="mt-4 bg-white border border-blue-100 px-6 py-4 flex items-center justify-between">
-              <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest">
-                {t.pagination.showing}{' '}
-                {((page - 1) * limit) + 1}–{Math.min(page * limit, totalCount)}{' '}
-                {t.pagination.of} {totalCount} {t.pagination.records}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  disabled={page === 1 || isLoadingData}
-                  onClick={() => setPage((p) => p - 1)}
-                  className="px-4 py-2 border border-blue-100 text-[13px] font-bold uppercase tracking-widest bg-white hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                >
-                  {isLoadingData && page > 1 ? (
-                    <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
-                  ) : '←'}
-                  {t.pagination.previous}
-                </button>
 
-                <span className="px-4 py-2 text-[13px] font-bold text-blue-600 border border-blue-200 bg-blue-50">
-                  {page} / {totalPages}
-                </span>
-
-                <button
-                  disabled={page === totalPages || isLoadingData}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="px-4 py-2 border border-blue-100 text-[13px] font-bold uppercase tracking-widest bg-white hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                >
-                  {t.pagination.next}
-                  {isLoadingData && page < totalPages ? (
-                    <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
-                  ) : '→'}
-                </button>
-              </div>
-            </div>
-          )}
         </main>
 
         {/* ------------------------------------------------------------------ */}
@@ -888,11 +887,10 @@ export default function DashboardContent({
                   <button
                     key={r}
                     onClick={() => setSelectedReason(r)}
-                    className={`w-full text-left px-5 py-3 text-[13px] font-bold uppercase tracking-widest border transition-all ${
-                      selectedReason === r
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                        : 'bg-white text-slate-500 border-slate-100 hover:border-blue-300'
-                    }`}
+                    className={`w-full text-left px-5 py-3 text-[13px] font-bold uppercase tracking-widest border transition-all ${selectedReason === r
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                      : 'bg-white text-slate-500 border-slate-100 hover:border-blue-300'
+                      }`}
                   >
                     {r}
                   </button>
@@ -1054,18 +1052,17 @@ export default function DashboardContent({
                       </div>
                       <div>
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t.modal.status}</h4>
-                        <span className={`text-[12px] font-bold uppercase tracking-wider px-2 py-1 border ${
-                          selectedViolation.status === 'ACCEPTED'
-                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                            : selectedViolation.status === 'DECLINED'
+                        <span className={`text-[12px] font-bold uppercase tracking-wider px-2 py-1 border ${selectedViolation.status === 'ACCEPTED'
+                          ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                          : selectedViolation.status === 'DECLINED'
                             ? 'bg-rose-50 text-rose-600 border-rose-100'
                             : 'bg-orange-50 text-orange-600 border-orange-100'
-                        }`}>
+                          }`}>
                           {selectedViolation.status === 'ACCEPTED'
                             ? t.status.approved
                             : selectedViolation.status === 'DECLINED'
-                            ? t.status.rejected
-                            : t.status.pending}
+                              ? t.status.rejected
+                              : t.status.pending}
                         </span>
                       </div>
                       {selectedViolation.reason && (
