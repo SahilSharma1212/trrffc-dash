@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { signToken } from '@/lib/auth';
+import { AUTH_COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/constants';
 
 export async function POST(request: Request) {
   try {
@@ -13,14 +14,8 @@ export async function POST(request: Request) {
         { status: 200 }
       );
 
-      // Set cookie directly on the response — NOT via cookieStore
-      response.cookies.set('auth_token', token, {
-        httpOnly: true,
-        secure: false,  // flip to true when you add HTTPS
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24,
-        path: '/',
-      });
+      // Set cookie directly on the response using centralized options
+      response.cookies.set(AUTH_COOKIE_NAME, token, COOKIE_OPTIONS);
 
       return response;
     }

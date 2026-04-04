@@ -1,39 +1,31 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose';
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-1234567890');
+import { verifyToken } from '@/lib/auth';
+import { AUTH_COOKIE_NAME, SIGNIN_PATH, DASHBOARD_PATH, ROOT_PATH } from '@/lib/constants';
 
 export async function proxy(request: NextRequest) {
-  const token = request.cookies.get('auth_token')?.value;
-  const url = request.nextUrl;
+  const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const { pathname } = request.nextUrl;
 
-  const isSigninPage = url.pathname === '/signin';
-  const isDashboardOrRoot = url.pathname.startsWith('/dashboard') || url.pathname === '/';
+  const isSigninPage = pathname === SIGNIN_PATH;
+  const isDashboardOrRoot = pathname.startsWith(DASHBOARD_PATH) || pathname === ROOT_PATH;
 
-  let isAuthenticated = false;
-  if (token) {
-    try {
-      await jwtVerify(token, JWT_SECRET);
-      isAuthenticated = true;
-    } catch {
-      isAuthenticated = false;
-    }
-  }
+  const payload = await verifyToken(token);
+  const isAuthenticated = !!payload;
 
   // Redirect authenticated users away from signin page
   if (isSigninPage && isAuthenticated) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL(DASHBOARD_PATH, request.url));
   }
 
   // Redirect unauthenticated users to signin
   if (isDashboardOrRoot && !isAuthenticated) {
-    return NextResponse.redirect(new URL('/signin', request.url));
+    return NextResponse.redirect(new URL(SIGNIN_PATH, request.url));
   }
 
   // Authenticated users at root -> dashboard
-  if (url.pathname === '/' && isAuthenticated) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+  if (pathname === ROOT_PATH && isAuthenticated) {
+    return NextResponse.redirect(new URL(DASHBOARD_PATH, request.url));
   }
 
   return NextResponse.next();

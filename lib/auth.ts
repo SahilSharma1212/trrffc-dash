@@ -1,18 +1,19 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { AUTH_COOKIE_NAME, TOKEN_EXPIRATION } from './constants';
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-1234567890');
 
 export async function signToken(userId: string) {
-  const token = await new SignJWT({ userId })
+  return await new SignJWT({ userId })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime(TOKEN_EXPIRATION)
     .sign(JWT_SECRET);
-  return token;
 }
 
-export async function verifyToken(token: string) {
+export async function verifyToken(token: string | undefined) {
+  if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     return payload;
@@ -23,7 +24,6 @@ export async function verifyToken(token: string) {
 
 export async function getSession() {
   const cookieStore = await cookies();
-  const token = cookieStore.get('auth_token')?.value;
-  if (!token) return null;
+  const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
   return await verifyToken(token);
 }
