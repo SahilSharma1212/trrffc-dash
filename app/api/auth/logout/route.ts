@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
+import { AUTH_COOKIE_NAME } from '@/lib/constants';
 
 export async function POST() {
 
-  // Clear the auth_token cookie
+  // Clear the auth cookie
   const response = NextResponse.json({ success: true });
-  response.cookies.set('auth_token', '', {
+  response.cookies.set(AUTH_COOKIE_NAME, '', {
     httpOnly: true,
     expires: new Date(0),
     path: '/',
