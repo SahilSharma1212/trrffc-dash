@@ -64,7 +64,7 @@ function LazyImage({
       {/* Shimmer placeholder shown until image decodes */}
       {(!visible || !loaded) && (
         <div
-          className="absolute inset-0 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite]"
+          className="absolute inset-0 bg-linear-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite]"
           style={style}
         />
       )}

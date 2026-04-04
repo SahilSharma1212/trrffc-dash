@@ -9,6 +9,7 @@ export default function SignInPage() {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -24,21 +25,28 @@ export default function SignInPage() {
 
       if (response.data.success) {
         toast.success('Signed in successfully');
-        router.push('/dashboard');
-        router.refresh();
+        setIsRedirecting(true);
+        // Using window.location.href instead of router.push to ensure a clean reload of auth state
+        window.location.href = '/dashboard';
       } else {
         toast.error(response.data.message || 'Invalid credentials');
+        setLoading(false);
       }
     } catch (error: any) {
       const message = error.response?.data?.message || 'Something went wrong. Please try again.';
       toast.error(message);
-    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className='bg-slate-50 min-h-screen w-full flex items-center justify-center p-4'>
+    <div className='bg-slate-50 min-h-screen w-full flex items-center justify-center p-4 relative'>
+      {isRedirecting && (
+        <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <div className="w-12 h-12 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-blue-600 font-bold uppercase tracking-[0.2em] animate-pulse">Redirecting to Dashboard...</p>
+        </div>
+      )}
       <div className='bg-white p-8 shadow-xl w-full max-w-[400px] border border-blue-100'>
         <div className="flex flex-col items-center mb-8">
           <h1 className='text-xl text-blue-600 font-bold tracking-[0.2em] uppercase'>Traffic Dash</h1>
