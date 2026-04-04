@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import { AiOutlineLoading3Quarters } from 'react-icons/ai';
 
 export default function SignInPage() {
   const [id, setId] = useState('');
@@ -26,8 +27,8 @@ export default function SignInPage() {
       if (response.data.success) {
         toast.success('Signed in successfully');
         setIsRedirecting(true);
-        // Using window.location.href instead of router.push to ensure a clean reload of auth state
-        window.location.href = '/dashboard';
+        // Using router.push for a faster SPA transition
+        router.push('/dashboard');
       } else {
         toast.error(response.data.message || 'Invalid credentials');
         setLoading(false);
@@ -43,7 +44,7 @@ export default function SignInPage() {
     <div className='bg-slate-50 min-h-screen w-full flex items-center justify-center p-4 relative'>
       {isRedirecting && (
         <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center z-50">
-          <div className="w-12 h-12 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <AiOutlineLoading3Quarters className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <p className="text-blue-600 font-bold uppercase tracking-[0.2em] animate-pulse">Redirecting to Dashboard...</p>
         </div>
       )}

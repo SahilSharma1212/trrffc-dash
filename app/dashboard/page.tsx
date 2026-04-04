@@ -1,9 +1,7 @@
-import axios from 'axios';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import DashboardContent from './DashboardContent';
 import { Violation } from '@/types/violation';
-import { cookies, headers } from 'next/headers';
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -12,37 +10,14 @@ export default async function DashboardPage() {
     redirect('/signin');
   }
 
-  // In a real production app, we would use a shared utility or environment variable for the base URL.
-  // For this local environment, we'll use a fallback or the standard dev port.
-
-
-  let initialData = {
+  // Shifted data fetching to client-side for faster redirection
+  const initialData = {
     data: [] as Violation[],
     count: 0,
     page: 1,
-    limit: 40,
+    limit: 50,
     stats: { pending: 0, accepted: 0, declined: 0 }
   };
-
-  try {
-    const cookieStore = await cookies();
-    const cookie = cookieStore.get('auth_token')?.value;
-
-    const headersList = await headers();
-    const host = headersList.get('host') || 'localhost:3000';
-    const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
-    const baseUrl = `${protocol}://${host}`;
-
-    const response = await axios.get(`${baseUrl}/api/violations?page=1&limit=40`, {
-      headers: {
-        Cookie: `auth_token=${cookie}`
-      }
-    });
-
-    initialData = response.data;
-  } catch (error) {
-    console.error('Axios fetch error in Server Component:', error);
-  }
 
   return (
     <DashboardContent

@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Violation } from '@/types/violation';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useInView } from 'react-intersection-observer';
+import { AiOutlineLoading3Quarters } from 'react-icons/ai';
+import { CgSpinner } from 'react-icons/cg';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,36 +42,22 @@ function LazyImage({
   style?: React.CSSProperties;
   className?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
   const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '200px' }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const { ref, inView } = useInView({
+    triggerOnce: true,
+    rootMargin: '200px',
+  });
 
   return (
-    <div ref={ref} style={style} className="relative bg-slate-100">
+    <div ref={ref} style={style} className="relative bg-slate-100 overflow-hidden">
       {/* Shimmer placeholder shown until image decodes */}
-      {(!visible || !loaded) && (
+      {(!inView || !loaded) && (
         <div
           className="absolute inset-0 bg-linear-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite]"
           style={style}
         />
       )}
-      {visible && (
+      {inView && (
         <img
           src={src}
           alt={alt}
@@ -90,7 +79,7 @@ function SkeletonRow() {
       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <td key={i} className="px-6 py-5">
           <div
-            className="h-3 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite] rounded-sm"
+            className="h-3 bg-linear-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite] rounded-sm"
             style={{ width: `${60 + (i * 13) % 40}%` }}
           />
         </td>
@@ -297,9 +286,9 @@ function StatusBadge({
 
   if (isUpdating) {
     return (
-      <span className={`${baseClass} bg-blue-50 text-blue-400 border-blue-200 cursor-wait`}>
-        <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
-        {t.rejection.processing}
+      <span className={`${baseClass} bg-blue-50 text-blue-600 border-blue-200 cursor-wait`}>
+        <AiOutlineLoading3Quarters className="w-3.5 h-3.5 animate-spin" />
+        <span className="ml-1">{t.rejection.processing}</span>
       </span>
     );
   }
@@ -364,6 +353,103 @@ function StatusBadge({
 }
 
 // ---------------------------------------------------------------------------
+// ViolationRow – Memoized to prevent heavy re-renders during search
+// ---------------------------------------------------------------------------
+const ViolationRow = React.memo(({
+  violation,
+  language,
+  t,
+  onSelect,
+  onAccept,
+  onOpenDecline,
+  updatingId
+}: {
+  violation: Violation;
+  language: string;
+  t: any;
+  onSelect: (v: Violation) => void;
+  onAccept: (id: string) => void;
+  onOpenDecline: (id: string) => void;
+  updatingId: string | null;
+}) => {
+  return (
+    <tr
+      onClick={() => onSelect(violation)}
+      className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
+    >
+      <td className="px-6 py-4">
+        <span className="font-mono text-xs text-blue-700 font-bold bg-blue-50 px-2 py-1 border border-blue-100">
+          {violation.vehicle_number}
+        </span>
+      </td>
+
+      <td className="px-6 py-4 text-[11px] text-slate-500 whitespace-nowrap">
+        {violation.detected_at
+          ? new Date(violation.detected_at).toLocaleString(
+            language === 'en' ? 'en-IN' : 'hi-IN',
+            { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+          )
+          : '—'}
+      </td>
+
+      <td className="px-6 py-4 text-[13px] text-slate-500 font-medium uppercase tracking-tight">
+        {violation.location}
+      </td>
+
+      <td className="px-6 py-4">
+        <span className="text-blue-600 text-[13px] font-bold uppercase tracking-widest">
+          {violation.helmet_status || (language === 'en' ? 'DETECTION' : 'पहचान')}
+        </span>
+      </td>
+
+      <td className="px-6 py-4 text-[11px] text-slate-500 font-medium uppercase">{violation.track_id}</td>
+
+      <td className="px-3 py-3">
+        {toImageSrc(violation.complete_image_b64) ? (
+          <div className="group/thumb relative overflow-hidden border border-blue-100 inline-block w-full max-w-[200px]">
+            <LazyImage
+              src={toImageSrc(violation.complete_image_b64)!}
+              alt="Full scene"
+              style={{ width: '100%', height: 'auto' }}
+              className="transition-transform duration-300 group-hover/thumb:scale-105"
+            />
+          </div>
+        ) : (
+          <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
+        )}
+      </td>
+
+      <td className="px-3 py-3">
+        {toImageSrc(violation.plate_image_b64) ? (
+          <div className="group/plate relative overflow-hidden border border-blue-100 inline-block w-full max-w-[200px]">
+            <LazyImage
+              src={toImageSrc(violation.plate_image_b64)!}
+              alt="Plate"
+              style={{ width: '100%', height: 'auto' }}
+              className="transition-transform duration-300 group-hover/plate:scale-105"
+            />
+          </div>
+        ) : (
+          <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
+        )}
+      </td>
+
+      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+        <StatusBadge
+          violation={violation}
+          onAccept={onAccept}
+          onOpenDecline={onOpenDecline}
+          updatingId={updatingId}
+          t={t}
+        />
+      </td>
+    </tr>
+  );
+});
+
+ViolationRow.displayName = 'ViolationRow';
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 interface DashboardContentProps {
@@ -398,6 +484,23 @@ export default function DashboardContent({
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null); // per-row update
   const [loadingImages, setLoadingImages] = useState(false);
+  
+  // Batch rendering for 25 + 25 optimization
+  const [showSecondBatch, setShowSecondBatch] = useState(false);
+  const { ref: batchRef, inView: batchInView } = useInView({
+    rootMargin: '100px',
+  });
+
+  // Reset second batch when data or page changes
+  useEffect(() => {
+    setShowSecondBatch(false);
+  }, [violations, page]);
+
+  useEffect(() => {
+    if (batchInView && !showSecondBatch && violations.length > 25) {
+      setShowSecondBatch(true);
+    }
+  }, [batchInView, showSecondBatch, violations.length]);
 
   const isInitialMount = useRef(true);
   const router = useRouter();
@@ -488,10 +591,14 @@ export default function DashboardContent({
     [page, initialLimit, filterType, filterValue, language, router]
   );
 
-  // Page-change trigger (skip initial mount — SSR already loaded page 1)
+  // Page-change trigger (Previously skipped initial mount for SSR)
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
+      // If no initial violations were provided by SSR, fetch them now
+      if (violations.length === 0) {
+        fetchViolations(true);
+      }
       return;
     }
     fetchViolations(true);
@@ -693,7 +800,7 @@ export default function DashboardContent({
               >
                 {isLoadingData ? (
                   <>
-                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <AiOutlineLoading3Quarters className="w-3.5 h-3.5 animate-spin" />
                     {language === 'en' ? 'Searching…' : 'खोज रहे हैं…'}
                   </>
                 ) : t.search.button}
@@ -716,7 +823,7 @@ export default function DashboardContent({
                   className="px-4 py-2 border border-blue-100 text-[13px] font-bold uppercase tracking-widest bg-white hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
                   {isLoadingData && page > 1 ? (
-                    <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                    <AiOutlineLoading3Quarters className="w-3 h-3 animate-spin text-blue-600" />
                   ) : '←'}
                   {t.pagination.previous}
                 </button>
@@ -732,7 +839,7 @@ export default function DashboardContent({
                 >
                   {t.pagination.next}
                   {isLoadingData && page < totalPages ? (
-                    <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                    <AiOutlineLoading3Quarters className="w-3 h-3 animate-spin text-blue-600" />
                   ) : '→'}
                 </button>
               </div>
@@ -764,84 +871,51 @@ export default function DashboardContent({
               </thead>
 
               <tbody className="divide-y divide-blue-50/50">
-                {isLoadingData
-                  ? Array.from({ length: SKELETON_COUNT }).map((_, i) => <SkeletonRow key={i} />)
-                  : violations.map((v) => (
-                    <tr
-                      key={v.id}
-                      onClick={() => setSelectedViolation(v)}
-                      className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
-                    >
-                      <td className="px-6 py-4">
-                        <span className="font-mono text-xs text-blue-700 font-bold bg-blue-50 px-2 py-1 border border-blue-100">
-                          {v.vehicle_number}
-                        </span>
-                      </td>
+                {isLoadingData ? (
+                  Array.from({ length: SKELETON_COUNT }).map((_, i) => <SkeletonRow key={i} />)
+                ) : (
+                  <>
+                    {/* First batch: 0 - 25 */}
+                    {violations.slice(0, 25).map((v) => (
+                      <ViolationRow
+                        key={v.id}
+                        violation={v}
+                        language={language}
+                        t={t}
+                        onSelect={setSelectedViolation}
+                        onAccept={(id) => handleUpdateStatus(id, 'accepted')}
+                        onOpenDecline={(id) => setDeclineTarget(id)}
+                        updatingId={updatingId}
+                      />
+                    ))}
 
-                      <td className="px-6 py-4 text-[11px] text-slate-500 whitespace-nowrap">
-                        {v.detected_at
-                          ? new Date(v.detected_at).toLocaleString(
-                            language === 'en' ? 'en-IN' : 'hi-IN',
-                            { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
-                          )
-                          : '—'}
-                      </td>
-
-                      <td className="px-6 py-4 text-[13px] text-slate-500 font-medium uppercase tracking-tight">
-                        {v.location}
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <span className="text-blue-600 text-[13px] font-bold uppercase tracking-widest">
-                          {v.helmet_status || (language === 'en' ? 'DETECTION' : 'पहचान')}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-[11px] text-slate-500 font-medium uppercase">{v.track_id}</td>
-
-                      {/* Scene thumbnail */}
-                      <td className="px-3 py-3">
-                        {toImageSrc(v.complete_image_b64) ? (
-                          <div className="group/thumb relative overflow-hidden border border-blue-100 inline-block w-full max-w-[200px]">
-                            <LazyImage
-                              src={toImageSrc(v.complete_image_b64)!}
-                              alt="Full scene"
-                              style={{ width: '100%', height: 'auto' }}
-                              className="transition-transform duration-300 group-hover/thumb:scale-105"
-                            />
+                    {/* Observer trigger for second batch */}
+                    {violations.length > 25 && !showSecondBatch && (
+                      <tr ref={batchRef}>
+                        <td colSpan={8} className="py-8 text-center bg-slate-50/30">
+                          <div className="flex items-center justify-center gap-2 text-slate-400 text-[11px] font-bold uppercase tracking-widest">
+                            <AiOutlineLoading3Quarters className="w-4 h-4 animate-spin text-blue-600" />
+                            Loading specialized records...
                           </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
-                        )}
-                      </td>
+                        </td>
+                      </tr>
+                    )}
 
-                      {/* Plate thumbnail */}
-                      <td className="px-3 py-3">
-                        {toImageSrc(v.plate_image_b64) ? (
-                          <div className="group/plate relative overflow-hidden border border-blue-100 inline-block w-full max-w-[200px]">
-                            <LazyImage
-                              src={toImageSrc(v.plate_image_b64)!}
-                              alt="Plate"
-                              style={{ width: '100%', height: 'auto' }}
-                              className="transition-transform duration-300 group-hover/plate:scale-105"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-300 uppercase tracking-widest">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <StatusBadge
-                          violation={v}
-                          onAccept={(id) => handleUpdateStatus(id, 'accepted')}
-                          onOpenDecline={(id) => setDeclineTarget(id)}
-                          updatingId={updatingId}
-                          t={t}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                    {/* Second batch: 25 - 50 */}
+                    {showSecondBatch && violations.slice(25, 50).map((v) => (
+                      <ViolationRow
+                        key={v.id}
+                        violation={v}
+                        language={language}
+                        t={t}
+                        onSelect={setSelectedViolation}
+                        onAccept={(id) => handleUpdateStatus(id, 'accepted')}
+                        onOpenDecline={(id) => setDeclineTarget(id)}
+                        updatingId={updatingId}
+                      />
+                    ))}
+                  </>
+                )}
               </tbody>
             </table>
 
@@ -907,11 +981,11 @@ export default function DashboardContent({
                 <button
                   disabled={!selectedReason || !!updatingId}
                   onClick={() => handleUpdateStatus(declineTarget, 'declined', selectedReason)}
-                  className="flex-[2] bg-blue-600 text-white py-3 text-[13px] font-bold uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 transition-all shadow-lg flex items-center justify-center gap-2"
+                  className="flex-2 bg-blue-600 text-white py-3 text-[13px] font-bold uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 transition-all shadow-lg flex items-center justify-center gap-2"
                 >
                   {updatingId ? (
                     <>
-                      <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      <AiOutlineLoading3Quarters className="w-4 h-4 animate-spin" />
                       {t.rejection.processing}
                     </>
                   ) : t.rejection.confirm}
@@ -932,7 +1006,7 @@ export default function DashboardContent({
             <div className="bg-white border border-blue-100 w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col animate-in fade-in zoom-in duration-200 overflow-hidden">
 
               {/* Modal Header */}
-              <div className="px-8 py-6 border-b border-blue-50 flex justify-between items-center bg-slate-50/50 flex-shrink-0">
+              <div className="px-8 py-6 border-b border-blue-50 flex justify-between items-center bg-slate-50/50 shrink-0">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 uppercase tracking-[0.2em]">
                     {t.modal.title}
@@ -969,7 +1043,7 @@ export default function DashboardContent({
                         {t.modal.images.complete}
                       </h4>
                       {loadingImages ? (
-                        <div className="w-full h-48 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite] border border-blue-50" />
+                        <div className="w-full h-48 bg-linear-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite] border border-blue-50" />
                       ) : toImageSrc(modalImages?.complete_image) ? (
                         <div className="border border-blue-50 overflow-hidden group">
                           <LazyImage
@@ -994,7 +1068,7 @@ export default function DashboardContent({
                         {t.modal.images.plate}
                       </h4>
                       {loadingImages ? (
-                        <div className="w-full h-20 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite] border border-blue-50" />
+                        <div className="w-full h-20 bg-linear-to-r from-slate-100 via-slate-200 to-slate-100 animate-[shimmer_1.4s_infinite] border border-blue-50" />
                       ) : toImageSrc(modalImages?.plate_image) ? (
                         <div className="border border-blue-50 overflow-hidden group">
                           <LazyImage
@@ -1079,7 +1153,7 @@ export default function DashboardContent({
               </div>
 
               {/* Modal Footer */}
-              <div className="px-8 py-6 border-t border-blue-50 bg-slate-50/50 flex justify-end flex-shrink-0">
+              <div className="px-8 py-6 border-t border-blue-50 bg-slate-50/50 flex justify-end shrink-0">
                 <button
                   onClick={() => setSelectedViolation(null)}
                   className="px-8 py-3 bg-white border border-slate-200 text-slate-600 text-[12px] font-bold uppercase tracking-widest hover:bg-slate-100 hover:border-slate-300 transition-all shadow-sm"
