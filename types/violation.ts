@@ -12,4 +12,5 @@ export interface Violation {
   status: string;
   reason: string | null;
   created_at: string;
+  challan: boolean | null;
 }
