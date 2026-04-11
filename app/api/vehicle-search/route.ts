@@ -8,7 +8,14 @@ import { createClient } from '@supabase/supabase-js';
 const TOLL_SUPABASE_URL  = process.env.TOLL_SUPABASE_URL  ?? '';
 const TOLL_SUPABASE_KEY  = process.env.TOLL_SUPABASE_KEY  ?? '';
 
-const tollSupabase = createClient(TOLL_SUPABASE_URL, TOLL_SUPABASE_KEY);
+const tollSupabase = createClient(
+  TOLL_SUPABASE_URL,
+  TOLL_SUPABASE_KEY,
+  {
+    db: { schema: 'Toll' }
+  }
+);
+
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function cleanVehicleNo(value: string): string {
