@@ -505,12 +505,19 @@ const ViolationRow = React.memo(({
 
       {/* Detection time */}
       <td className="px-3 py-2.5 text-[11px] text-slate-500 whitespace-nowrap">
-        {violation.detected_at
-          ? new Date(violation.detected_at).toLocaleString('en-IN', {
-              day: '2-digit', month: 'short', year: '2-digit',
-              hour: '2-digit', minute: '2-digit',
-            })
-          : '—'}
+        
+{violation.detected_at
+  ? new Date(violation.detected_at).toLocaleString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'UTC', // Forces display to match Supabase storage
+    }).replace(/\//g, '-') // Converts DD/MM/YYYY to DD-MM-YYYY
+  : '—'}
       </td>
 
       {/* Location */}
@@ -1160,10 +1167,11 @@ export default function DashboardContent({
                       <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{T.modal.detectionTime}</h4>
                       <p className="text-[12px] font-semibold text-slate-700">
                         {selectedViolation.detected_at
-                          ? new Date(selectedViolation.detected_at).toLocaleString('en-IN', {
+                          ? new Date(selectedViolation.detected_at).toLocaleString('en-GB', {
                               day: '2-digit', month: 'long', year: 'numeric',
-                              hour: '2-digit', minute: '2-digit', second: '2-digit',
-                            })
+                              hour: '2-digit', minute: '2-digit', second: '2-digit',hour12: false,
+      timeZone: 'UTC',
+                            }).replace(/\//g, '-')
                           : '—'}
                       </p>
                     </div>
