@@ -9,19 +9,21 @@ import { useInView } from 'react-intersection-observer';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
 
 // ---------------------------------------------------------------------------
-// Image helpers — handles base64 strings AND https:// URLs
+// Types — extend Violation with the two extra API columns
+// ---------------------------------------------------------------------------
+type ViolationEnriched = Violation & {
+  prior_challan_count?: number;   // challans before today
+  same_day_count?: number;        // challans on same UTC date (excl. self)
+};
+
+// ---------------------------------------------------------------------------
+// Image helpers
 // ---------------------------------------------------------------------------
 function toImageSrc(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const s = raw.trim();
-
-  // Already a complete data URI
   if (s.startsWith('data:')) return s;
-
-  // Remote URL (Supabase Storage or any https)
   if (s.startsWith('http://') || s.startsWith('https://')) return s;
-
-  // Raw base64 — detect PNG vs JPEG by header
   const mime = s.startsWith('iVBOR') ? 'image/png' : 'image/jpeg';
   return `data:${mime};base64,${s}`;
 }
@@ -195,7 +197,7 @@ const T = {
 };
 
 // ---------------------------------------------------------------------------
-// StatusBadgeV2
+// StatusBadgeV2 (unchanged)
 // ---------------------------------------------------------------------------
 function StatusBadgeV2({
   violation,
@@ -204,7 +206,7 @@ function StatusBadgeV2({
   onUndo,
   updatingId,
 }: {
-  violation: Violation;
+  violation: ViolationEnriched;
   onDeclineWithReason: (id: string, reason: string) => void;
   onAccept: (id: string) => void;
   onUndo: (id: string) => void;
@@ -237,10 +239,7 @@ function StatusBadgeV2({
   if (violation.status === 'ACCEPTED') return (
     <div className="flex flex-col items-end gap-0.5" onClick={(e) => e.stopPropagation()}>
       <span className={`${base} bg-emerald-50 text-emerald-600 border-emerald-200`}>✓ {T.status.approved}</span>
-      <button
-        onClick={() => onUndo(violation.id)}
-        className="text-[9px] text-slate-300 hover:text-orange-400 uppercase tracking-widest transition-colors"
-      >
+      <button onClick={() => onUndo(violation.id)} className="text-[9px] text-slate-300 hover:text-orange-400 uppercase tracking-widest transition-colors">
         {T.status.undoAccept}
       </button>
     </div>
@@ -252,10 +251,7 @@ function StatusBadgeV2({
       {violation.reason && (
         <p className="text-[8px] text-slate-400 text-right max-w-[120px] leading-tight">{violation.reason}</p>
       )}
-      <button
-        onClick={() => onUndo(violation.id)}
-        className="text-[9px] text-slate-300 hover:text-orange-400 uppercase tracking-widest transition-colors"
-      >
+      <button onClick={() => onUndo(violation.id)} className="text-[9px] text-slate-300 hover:text-orange-400 uppercase tracking-widest transition-colors">
         {T.status.undoDecline}
       </button>
     </div>
@@ -328,13 +324,58 @@ function StatusBadgeV2({
 }
 
 // ---------------------------------------------------------------------------
-// EditableVehicleNumber
+// ChallanHistoryBadge — shows prior + same-day repeat counts
+// ---------------------------------------------------------------------------
+function ChallanHistoryBadge({
+  priorCount,
+  sameDayCount,
+}: {
+  priorCount: number;
+  sameDayCount: number;
+}) {
+  if (priorCount === 0 && sameDayCount === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1 mt-1 flex-wrap">
+      {/* Total prior challans (before today) */}
+      {priorCount > 0 && (
+        <span
+          title={`${priorCount} challan${priorCount > 1 ? 's' : ''} issued before today for this vehicle`}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-[3px] bg-rose-50 border border-rose-200 text-rose-600 text-[9px] font-black leading-none cursor-default select-none"
+        >
+          <svg className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          ({priorCount})
+        </span>
+      )}
+
+      {/* Same-day challans */}
+      {sameDayCount > 0 && (
+        <span
+          title={`${sameDayCount} challan${sameDayCount > 1 ? 's' : ''} issued today for this vehicle`}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-[3px] bg-amber-50 border border-amber-300 text-amber-700 text-[9px] font-black leading-none cursor-default select-none"
+        >
+          <svg className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+              d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707" />
+          </svg>
+          Same day ({sameDayCount})
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EditableVehicleNumber — now shows ChallanHistoryBadge underneath
 // ---------------------------------------------------------------------------
 function EditableVehicleNumber({
   violation,
   onSave,
 }: {
-  violation: Violation;
+  violation: ViolationEnriched;
   onSave: (id: string, v: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -344,41 +385,51 @@ function EditableVehicleNumber({
   const isAccepted = violation.status === 'ACCEPTED';
   const isEmpty = !violation.vehicle_number?.trim();
 
+  const priorCount   = violation.prior_challan_count  ?? 0;
+  const sameDayCount = violation.same_day_count        ?? 0;
+
   useEffect(() => { setValue(violation.vehicle_number || ''); }, [violation.vehicle_number]);
   useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
 
   if (!isAccepted) {
     return (
-      <span className="font-mono text-[11px] text-blue-700 font-bold bg-blue-50 px-2 py-1 border border-blue-100">
-        {violation.vehicle_number || '—'}
-      </span>
+      <div>
+        <span className="font-mono text-[11px] text-blue-700 font-bold bg-blue-50 px-2 py-1 border border-blue-100">
+          {violation.vehicle_number || '—'}
+        </span>
+        <ChallanHistoryBadge priorCount={priorCount} sameDayCount={sameDayCount} />
+      </div>
     );
   }
 
   if (!editing) return (
-    <button
-      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-      className={`font-mono text-[11px] font-bold px-2 py-1 border transition-all group ${isEmpty
-        ? 'bg-amber-50 text-amber-600 border-amber-300 border-dashed animate-pulse hover:animate-none hover:bg-amber-100'
-        : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-        }`}
-    >
-      {isEmpty ? (
-        <span className="flex items-center gap-1">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-          </svg>
-          ADD NO.
-        </span>
-      ) : (
-        <span className="flex items-center gap-1">
-          {violation.vehicle_number}
-          <svg className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-        </span>
-      )}
-    </button>
+    <div>
+      <button
+        onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+        className={`font-mono text-[11px] font-bold px-2 py-1 border transition-all group ${isEmpty
+          ? 'bg-amber-50 text-amber-600 border-amber-300 border-dashed animate-pulse hover:animate-none hover:bg-amber-100'
+          : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+          }`}
+      >
+        {isEmpty ? (
+          <span className="flex items-center gap-1">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            ADD NO.
+          </span>
+        ) : (
+          <span className="flex items-center gap-1">
+            {violation.vehicle_number}
+            <svg className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </span>
+        )}
+      </button>
+      {/* ── History badges ── */}
+      <ChallanHistoryBadge priorCount={priorCount} sameDayCount={sameDayCount} />
+    </div>
   );
 
   const doSave = async () => {
@@ -389,47 +440,50 @@ function EditableVehicleNumber({
   };
 
   return (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value.toUpperCase())}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') doSave();
-          if (e.key === 'Escape') { setValue(violation.vehicle_number || ''); setEditing(false); }
-        }}
-        placeholder="CG04AB1234"
-        className="font-mono text-[11px] font-bold text-blue-700 border border-blue-400 px-2 py-1 w-28 focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase bg-blue-50"
-      />
-      <button disabled={saving} onClick={doSave} className="p-1 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-        {saving
-          ? <AiOutlineLoading3Quarters className="w-3 h-3 animate-spin" />
-          : <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
-        }
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); setValue(violation.vehicle_number || ''); setEditing(false); }}
-        className="p-1 text-slate-300 hover:text-slate-500"
-      >
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+    <div>
+      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value.toUpperCase())}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') doSave();
+            if (e.key === 'Escape') { setValue(violation.vehicle_number || ''); setEditing(false); }
+          }}
+          placeholder="CG04AB1234"
+          className="font-mono text-[11px] font-bold text-blue-700 border border-blue-400 px-2 py-1 w-28 focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase bg-blue-50"
+        />
+        <button disabled={saving} onClick={doSave} className="p-1 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+          {saving
+            ? <AiOutlineLoading3Quarters className="w-3 h-3 animate-spin" />
+            : <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+          }
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); setValue(violation.vehicle_number || ''); setEditing(false); }}
+          className="p-1 text-slate-300 hover:text-slate-500"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <ChallanHistoryBadge priorCount={priorCount} sameDayCount={sameDayCount} />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ChallanCheckbox
+// ChallanCheckbox (unchanged)
 // ---------------------------------------------------------------------------
 function ChallanCheckbox({
   violation,
   onToggle,
   challanUpdatingId,
 }: {
-  violation: Violation;
+  violation: ViolationEnriched;
   onToggle: (id: string, value: boolean) => void;
   challanUpdatingId: string | null;
 }) {
@@ -462,7 +516,7 @@ function ChallanCheckbox({
 }
 
 // ---------------------------------------------------------------------------
-// ViolationRow — uses complete_image_url / plate_image_url
+// ViolationRow
 // ---------------------------------------------------------------------------
 const ViolationRow = React.memo(({
   violation,
@@ -478,9 +532,9 @@ const ViolationRow = React.memo(({
   sceneSize,
   sceneHeight,
 }: {
-  violation: Violation;
+  violation: ViolationEnriched;
   rowIndex: number;
-  onSelect: (v: Violation) => void;
+  onSelect: (v: ViolationEnriched) => void;
   onAccept: (id: string) => void;
   onDeclineWithReason: (id: string, reason: string) => void;
   onUndo: (id: string) => void;
@@ -491,33 +545,36 @@ const ViolationRow = React.memo(({
   sceneSize: number;
   sceneHeight: number;
 }) => {
-  // toImageSrc handles both https:// URLs and raw base64 strings
   const sceneSrc = toImageSrc(violation.complete_image_url);
   const plateSrc = toImageSrc(violation.plate_image_url);
+
+  // Highlight row if this vehicle is a known repeat offender
+  const isRepeat = (violation.prior_challan_count ?? 0) > 0;
 
   return (
     <tr
       onClick={() => onSelect(violation)}
-      className="hover:bg-blue-50/40 transition-colors cursor-pointer border-b border-blue-50/70"
+      className={`hover:bg-blue-50/40 transition-colors cursor-pointer border-b border-blue-50/70 ${
+        isRepeat ? 'bg-rose-50/20' : ''
+      }`}
     >
       {/* Row number */}
       <td className="px-3 py-2.5 text-[9px] text-slate-300 font-bold w-8 select-none">{rowIndex + 1}</td>
 
       {/* Detection time */}
       <td className="px-3 py-2.5 text-[11px] text-slate-500 whitespace-nowrap">
-        
-{violation.detected_at
-  ? new Date(violation.detected_at).toLocaleString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: 'UTC', // Forces display to match Supabase storage
-    }).replace(/\//g, '-') // Converts DD/MM/YYYY to DD-MM-YYYY
-  : '—'}
+        {violation.detected_at
+          ? new Date(violation.detected_at).toLocaleString('en-GB', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false,
+              timeZone: 'UTC',
+            }).replace(/\//g, '-')
+          : '—'}
       </td>
 
       {/* Location */}
@@ -535,13 +592,10 @@ const ViolationRow = React.memo(({
       {/* Track ID */}
       <td className="px-3 py-2.5 text-[10px] text-slate-400 font-mono">{violation.track_id}</td>
 
-      {/* Scene thumbnail — dynamic size */}
+      {/* Scene thumbnail */}
       <td className="px-2 py-2" style={{ width: sceneSize + 10 }}>
         {sceneSrc
-          ? <div
-              className="border border-blue-100 overflow-hidden rounded-sm shrink-0"
-              style={{ width: sceneSize, height: sceneHeight }}
-            >
+          ? <div className="border border-blue-100 overflow-hidden rounded-sm shrink-0" style={{ width: sceneSize, height: sceneHeight }}>
               <LazyImage src={sceneSrc} alt="Scene" />
             </div>
           : <span className="text-[9px] text-slate-200 uppercase">—</span>
@@ -567,7 +621,7 @@ const ViolationRow = React.memo(({
         />
       </td>
 
-      {/* Vehicle number */}
+      {/* Vehicle number + history badges */}
       <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
         <EditableVehicleNumber violation={violation} onSave={onSaveVehicleNumber} />
       </td>
@@ -586,7 +640,7 @@ const ViolationRow = React.memo(({
 ViolationRow.displayName = 'ViolationRow';
 
 // ---------------------------------------------------------------------------
-// PageJumper
+// PageJumper (unchanged)
 // ---------------------------------------------------------------------------
 function PageJumper({
   page,
@@ -628,7 +682,7 @@ function PageJumper({
 // Main DashboardContent
 // ---------------------------------------------------------------------------
 interface DashboardContentProps {
-  initialViolations: Violation[];
+  initialViolations: ViolationEnriched[];
   initialTotal: number;
   initialPage: number;
   initialLimit: number;
@@ -642,7 +696,7 @@ export default function DashboardContent({
   initialLimit,
   initialStats,
 }: DashboardContentProps) {
-  const [violations, setViolations] = useState<Violation[]>(initialViolations);
+  const [violations, setViolations] = useState<ViolationEnriched[]>(initialViolations);
   const [totalCount, setTotalCount] = useState(initialTotal);
   const [page, setPage] = useState(initialPage);
   const limit = initialLimit;
@@ -650,21 +704,23 @@ export default function DashboardContent({
   const [filterType, setFilterType] = useState('vehicle_number');
   const [filterValue, setFilterValue] = useState('');
 
-  const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
+  const [selectedViolation, setSelectedViolation] = useState<ViolationEnriched | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isFetchingNew, setIsFetchingNew] = useState(false);
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [challanUpdatingId, setChallanUpdatingId] = useState<string | null>(null);
 
-  // ── Scene size control (persisted) ──────────────────────────────────────
-  const [sceneSize, setSceneSize] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      return Number(localStorage.getItem('sceneSizePx') ?? 60);
-    }
-    return 60;
-  });
-  // 16:9 derived height
+  // Scene size control
+const [sceneSize, setSceneSize] = useState<number>(60);
+
+useEffect(() => {
+  const saved = localStorage.getItem('sceneSizePx');
+  if (saved) {
+    setSceneSize(Number(saved));
+  }
+}, []);
+
   const sceneHeight = Math.round(sceneSize * (9 / 16));
 
   const changeSceneSize = (delta: number) => {
@@ -674,9 +730,8 @@ export default function DashboardContent({
       return next;
     });
   };
-  // ────────────────────────────────────────────────────────────────────────
 
-  // Batch render: first 25 immediately, rest on scroll
+  // Batch render
   const [showSecondBatch, setShowSecondBatch] = useState(false);
   const { ref: batchRef, inView: batchInView } = useInView({ rootMargin: '200px' });
   useEffect(() => { setShowSecondBatch(false); }, [violations, page]);
@@ -687,16 +742,13 @@ export default function DashboardContent({
   const isInitialMount = useRef(true);
   const router = useRouter();
 
-  // ---------------------------------------------------------------------------
-  // Modal: images come directly from the selected violation row
-  // No secondary fetch needed — complete_image_url / plate_image_url
-  // are included in the list API response
-  // ---------------------------------------------------------------------------
   const modalSceneSrc = selectedViolation ? toImageSrc(selectedViolation.complete_image_url) : null;
   const modalPlateSrc = selectedViolation ? toImageSrc(selectedViolation.plate_image_url) : null;
 
   // ---------------------------------------------------------------------------
   // fetchViolations
+  // The API must now return prior_challan_count and same_day_count per row
+  // (add them via the SQL snippet in violations-query-enriched.sql)
   // ---------------------------------------------------------------------------
   const fetchViolations = useCallback(async (showLoading = false, silent = false) => {
     if (showLoading) setIsLoadingData(true);
@@ -706,7 +758,7 @@ export default function DashboardContent({
         params: { page, limit, filterType, filterValue },
       });
       if (res.status === 200) {
-        setViolations(res.data.data);
+        setViolations(res.data.data as ViolationEnriched[]);
         setTotalCount(res.data.count);
         setStats(res.data.stats);
       }
@@ -838,7 +890,6 @@ export default function DashboardContent({
   const totalPages = Math.ceil(totalCount / limit);
   const SKELETON_COUNT = 8;
 
-  // Shared props for ViolationRow
   const rowSharedProps = {
     onSelect: setSelectedViolation,
     onAccept: (id: string) => handleUpdateStatus(id, 'ACCEPTED'),
@@ -915,10 +966,8 @@ export default function DashboardContent({
             ))}
           </div>
 
-          {/* ── SEARCH + FILTER (with Scene size stepper) ── */}
+          {/* ── SEARCH + FILTER ── */}
           <div className="flex flex-col lg:flex-row justify-between items-end lg:items-center mb-4 gap-3 bg-white p-3.5 border border-blue-100">
-
-            {/* Left: label + scene size stepper */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
@@ -935,29 +984,20 @@ export default function DashboardContent({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mr-1">Scene</span>
-                <button
-                  onClick={() => changeSceneSize(-10)}
-                  disabled={sceneSize <= 30}
-                  title="Shrink scene thumbnail"
-                  className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 transition-colors rounded-sm font-bold text-base leading-none select-none"
-                >
-                  −
-                </button>
-                <span className="text-[10px] font-black text-blue-600 w-9 text-center tabular-nums">
-                  {sceneSize}px
-                </span>
-                <button
-                  onClick={() => changeSceneSize(10)}
-                  disabled={sceneSize >= 160}
-                  title="Grow scene thumbnail"
-                  className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 transition-colors rounded-sm font-bold text-base leading-none select-none"
-                >
-                  +
-                </button>
+                <button onClick={() => changeSceneSize(-10)} disabled={sceneSize <= 30} title="Shrink scene thumbnail"
+                  className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 transition-colors rounded-sm font-bold text-base leading-none select-none">−</button>
+                <span className="text-[10px] font-black text-blue-600 w-9 text-center tabular-nums">{sceneSize}px</span>
+                <button onClick={() => changeSceneSize(10)} disabled={sceneSize >= 160} title="Grow scene thumbnail"
+                  className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 transition-colors rounded-sm font-bold text-base leading-none select-none">+</button>
+              </div>
+
+              {/* Legend for repeat offender row highlight */}
+              <div className="flex items-center gap-1.5 border border-rose-100 bg-rose-50/40 px-2 py-1">
+                <div className="w-2 h-2 bg-rose-200 rounded-sm" />
+                <span className="text-[8px] font-black text-rose-400/70 uppercase tracking-widest">Repeat offender</span>
               </div>
             </div>
 
-            {/* Right: filter controls */}
             <div className="flex items-center gap-2 w-full lg:w-auto">
               <select
                 value={filterType}
@@ -997,19 +1037,13 @@ export default function DashboardContent({
                 {T.pagination.showing} {((page - 1) * limit) + 1}–{Math.min(page * limit, totalCount)} {T.pagination.of} {totalCount} {T.pagination.records}
               </p>
               <div className="flex items-center gap-2">
-                <button
-                  disabled={page === 1 || isLoadingData}
-                  onClick={() => setPage((p) => p - 1)}
-                  className="px-3 py-1.5 border border-blue-100 text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 disabled:opacity-40 transition-colors"
-                >
+                <button disabled={page === 1 || isLoadingData} onClick={() => setPage((p) => p - 1)}
+                  className="px-3 py-1.5 border border-blue-100 text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 disabled:opacity-40 transition-colors">
                   {T.pagination.previous}
                 </button>
                 <PageJumper page={page} totalPages={totalPages} onJump={setPage} disabled={isLoadingData} />
-                <button
-                  disabled={page === totalPages || isLoadingData}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 border border-blue-100 text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 disabled:opacity-40 transition-colors"
-                >
+                <button disabled={page === totalPages || isLoadingData} onClick={() => setPage((p) => p + 1)}
+                  className="px-3 py-1.5 border border-blue-100 text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 disabled:opacity-40 transition-colors">
                   {T.pagination.next}
                 </button>
               </div>
@@ -1033,12 +1067,7 @@ export default function DashboardContent({
                     T.table.vehicleNumber,
                     T.table.challan,
                   ].map((h, i) => (
-                    <th
-                      key={i}
-                      className={`px-3 py-3.5 text-[9px] font-black text-slate-400 uppercase tracking-widest ${
-                        i === 7 ? 'text-right' : i === 9 ? 'text-center' : ''
-                      }`}
-                    >
+                    <th key={i} className={`px-3 py-3.5 text-[9px] font-black text-slate-400 uppercase tracking-widest ${i === 7 ? 'text-right' : i === 9 ? 'text-center' : ''}`}>
                       {h}
                     </th>
                   ))}
@@ -1093,64 +1122,45 @@ export default function DashboardContent({
           >
             <div className="bg-white border border-blue-100 w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
 
-              {/* Modal Header */}
               <div className="px-7 py-4 border-b border-blue-50 flex justify-between items-center bg-slate-50/50 shrink-0">
                 <div>
                   <h3 className="text-sm font-black text-slate-900 uppercase tracking-[0.2em]">{T.modal.title}</h3>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[10px] font-mono text-slate-400">{selectedViolation.id}</span>
-                    <button
-                      onClick={() => copyToClipboard(selectedViolation.id)}
-                      className="p-0.5 hover:bg-blue-100 rounded transition-colors"
-                      title={T.modal.copyId}
-                    >
+                    <button onClick={() => copyToClipboard(selectedViolation.id)} className="p-0.5 hover:bg-blue-100 rounded transition-colors" title={T.modal.copyId}>
                       <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
                     </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedViolation(null)}
-                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-all"
-                >
+                <button onClick={() => setSelectedViolation(null)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-all">
                   <span className="text-xl font-light">×</span>
                 </button>
               </div>
 
-              {/* Modal Body */}
               <div className="flex-1 overflow-y-auto p-7">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-
-                  {/* Images — read directly from selectedViolation, no extra fetch */}
                   <div className="space-y-5">
                     <div>
                       <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">{T.modal.images.complete}</h4>
                       {modalSceneSrc
-                        ? <div className="border border-blue-50 overflow-hidden group rounded-sm">
-                            <LazyImage src={modalSceneSrc} alt="Scene" fullSize />
-                          </div>
-                        : <div className="w-full py-10 flex flex-col items-center gap-2 bg-slate-50 border border-dashed border-slate-200 text-[9px] text-slate-300 uppercase tracking-widest">
-                            No Image
-                          </div>
+                        ? <div className="border border-blue-50 overflow-hidden group rounded-sm"><LazyImage src={modalSceneSrc} alt="Scene" fullSize /></div>
+                        : <div className="w-full py-10 flex flex-col items-center gap-2 bg-slate-50 border border-dashed border-slate-200 text-[9px] text-slate-300 uppercase tracking-widest">No Image</div>
                       }
                     </div>
                     <div>
                       <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">{T.modal.images.plate}</h4>
                       {modalPlateSrc
                         ? <PlateLazyImage src={modalPlateSrc} alt="Plate" fullSize />
-                        : <div className="w-full py-5 flex items-center justify-center bg-slate-50 border border-dashed border-slate-200 text-[9px] text-slate-300 uppercase tracking-widest">
-                            No Plate Image
-                          </div>
+                        : <div className="w-full py-5 flex items-center justify-center bg-slate-50 border border-dashed border-slate-200 text-[9px] text-slate-300 uppercase tracking-widest">No Plate Image</div>
                       }
                     </div>
                   </div>
 
-                  {/* Details grid */}
                   <div className="grid grid-cols-2 gap-x-7 gap-y-6">
                     {[
                       { label: T.modal.trackId,      value: selectedViolation.track_id },
-                      { label: T.modal.vehicleNumber, value: selectedViolation.vehicle_number, mono: true, blue: true },
                       { label: T.modal.location,      value: selectedViolation.location,       upper: true },
                       { label: T.modal.dateFolder,    value: selectedViolation.date_folder,    mono: true },
                       { label: T.modal.violationType, value: selectedViolation.helmet_status || 'DETECTION', blue: true },
@@ -1163,14 +1173,25 @@ export default function DashboardContent({
                       </div>
                     ))}
 
+                    {/* Vehicle number + history in modal */}
+                    <div className="col-span-2">
+                      <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{T.modal.vehicleNumber}</h4>
+                      <p className="text-[12px] font-semibold text-blue-700 font-mono mb-1.5">
+                        {selectedViolation.vehicle_number || '—'}
+                      </p>
+                      <ChallanHistoryBadge
+                        priorCount={selectedViolation.prior_challan_count ?? 0}
+                        sameDayCount={selectedViolation.same_day_count ?? 0}
+                      />
+                    </div>
+
                     <div>
                       <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{T.modal.detectionTime}</h4>
                       <p className="text-[12px] font-semibold text-slate-700">
                         {selectedViolation.detected_at
                           ? new Date(selectedViolation.detected_at).toLocaleString('en-GB', {
                               day: '2-digit', month: 'long', year: 'numeric',
-                              hour: '2-digit', minute: '2-digit', second: '2-digit',hour12: false,
-      timeZone: 'UTC',
+                              hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
                             }).replace(/\//g, '-')
                           : '—'}
                       </p>
@@ -1184,8 +1205,7 @@ export default function DashboardContent({
                                                                   'bg-orange-50 text-orange-600 border-orange-100'
                       }`}>
                         {selectedViolation.status === 'ACCEPTED' ? T.status.approved :
-                         selectedViolation.status === 'DECLINED' ? T.status.rejected :
-                                                                   T.status.pending}
+                         selectedViolation.status === 'DECLINED' ? T.status.rejected : T.status.pending}
                       </span>
                     </div>
 
@@ -1201,12 +1221,8 @@ export default function DashboardContent({
                 </div>
               </div>
 
-              {/* Modal Footer */}
               <div className="px-7 py-4 border-t border-blue-50 bg-slate-50/50 flex justify-end shrink-0">
-                <button
-                  onClick={() => setSelectedViolation(null)}
-                  className="px-7 py-2.5 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all shadow-sm"
-                >
+                <button onClick={() => setSelectedViolation(null)} className="px-7 py-2.5 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all shadow-sm">
                   {T.modal.close}
                 </button>
               </div>
